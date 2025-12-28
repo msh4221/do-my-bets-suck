@@ -1,0 +1,306 @@
+"""
+The Odds API client for fetching current NFL betting lines.
+
+API Documentation: https://the-odds-api.com/liveapi/guides/v4/
+Free tier: 500 requests/month
+
+Usage:
+    client = OddsAPIClient(api_key="your_key")
+    games = client.get_nfl_odds()
+"""
+
+import os
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+import requests
+
+# Load .env file if present
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass  # python-dotenv not installed, rely on system env vars
+
+
+@dataclass
+class BookmakerOdds:
+    """Odds from a single bookmaker."""
+    bookmaker: str
+    spread_home: Optional[float] = None
+    spread_home_price: Optional[int] = None
+    spread_away: Optional[float] = None
+    spread_away_price: Optional[int] = None
+    total_line: Optional[float] = None
+    over_price: Optional[int] = None
+    under_price: Optional[int] = None
+    home_moneyline: Optional[int] = None
+    away_moneyline: Optional[int] = None
+
+
+@dataclass
+class UpcomingGame:
+    """An upcoming NFL game with betting lines."""
+    game_id: str
+    commence_time: datetime
+    home_team: str
+    away_team: str
+
+    # Consensus lines (average across bookmakers)
+    spread_line: Optional[float] = None  # Negative = home favored
+    total_line: Optional[float] = None
+    home_moneyline: Optional[int] = None
+    away_moneyline: Optional[int] = None
+
+    # Individual bookmaker odds
+    bookmakers: list[BookmakerOdds] = field(default_factory=list)
+
+    # Derived fields
+    home_favorite: bool = False
+
+    def __post_init__(self):
+        if self.spread_line is not None:
+            self.home_favorite = self.spread_line < 0
+
+
+class OddsAPIClient:
+    """Client for The Odds API."""
+
+    BASE_URL = "https://api.the-odds-api.com/v4"
+    NFL_SPORT = "americanfootball_nfl"
+
+    # Map Odds API team names to standard abbreviations
+    TEAM_MAP = {
+        "Arizona Cardinals": "ARI",
+        "Atlanta Falcons": "ATL",
+        "Baltimore Ravens": "BAL",
+        "Buffalo Bills": "BUF",
+        "Carolina Panthers": "CAR",
+        "Chicago Bears": "CHI",
+        "Cincinnati Bengals": "CIN",
+        "Cleveland Browns": "CLE",
+        "Dallas Cowboys": "DAL",
+        "Denver Broncos": "DEN",
+        "Detroit Lions": "DET",
+        "Green Bay Packers": "GB",
+        "Houston Texans": "HOU",
+        "Indianapolis Colts": "IND",
+        "Jacksonville Jaguars": "JAX",
+        "Kansas City Chiefs": "KC",
+        "Las Vegas Raiders": "LV",
+        "Los Angeles Chargers": "LAC",
+        "Los Angeles Rams": "LA",
+        "Miami Dolphins": "MIA",
+        "Minnesota Vikings": "MIN",
+        "New England Patriots": "NE",
+        "New Orleans Saints": "NO",
+        "New York Giants": "NYG",
+        "New York Jets": "NYJ",
+        "Philadelphia Eagles": "PHI",
+        "Pittsburgh Steelers": "PIT",
+        "San Francisco 49ers": "SF",
+        "Seattle Seahawks": "SEA",
+        "Tampa Bay Buccaneers": "TB",
+        "Tennessee Titans": "TEN",
+        "Washington Commanders": "WAS",
+    }
+
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize with API key.
+
+        Args:
+            api_key: The Odds API key. If not provided, reads from ODDS_API_KEY env var.
+        """
+        self.api_key = api_key or os.environ.get("ODDS_API_KEY")
+        if not self.api_key:
+            raise ValueError(
+                "API key required. Set ODDS_API_KEY environment variable or pass api_key parameter."
+            )
+        self._requests_remaining: Optional[int] = None
+        self._requests_used: Optional[int] = None
+
+    @property
+    def requests_remaining(self) -> Optional[int]:
+        """Number of API requests remaining this month."""
+        return self._requests_remaining
+
+    @property
+    def requests_used(self) -> Optional[int]:
+        """Number of API requests used this month."""
+        return self._requests_used
+
+    def _normalize_team(self, team_name: str) -> str:
+        """Convert full team name to abbreviation."""
+        return self.TEAM_MAP.get(team_name, team_name)
+
+    def get_nfl_odds(
+        self,
+        markets: list[str] = ["spreads", "totals", "h2h"],
+        regions: str = "us",
+        odds_format: str = "american",
+    ) -> list[UpcomingGame]:
+        """
+        Fetch current NFL odds from The Odds API.
+
+        Args:
+            markets: List of markets to fetch. Options: spreads, totals, h2h (moneyline)
+            regions: Bookmaker region. Options: us, uk, eu, au
+            odds_format: Odds format. Options: american, decimal
+
+        Returns:
+            List of UpcomingGame objects with betting lines
+        """
+        url = f"{self.BASE_URL}/sports/{self.NFL_SPORT}/odds"
+
+        params = {
+            "apiKey": self.api_key,
+            "regions": regions,
+            "markets": ",".join(markets),
+            "oddsFormat": odds_format,
+        }
+
+        response = requests.get(url, params=params, timeout=30)
+
+        # Track API usage from response headers
+        self._requests_remaining = int(response.headers.get("x-requests-remaining", 0))
+        self._requests_used = int(response.headers.get("x-requests-used", 0))
+
+        if response.status_code == 401:
+            raise ValueError("Invalid API key")
+        elif response.status_code == 422:
+            raise ValueError("Invalid request parameters")
+        elif response.status_code == 429:
+            raise ValueError("API rate limit exceeded")
+        elif response.status_code != 200:
+            raise ValueError(f"API error: {response.status_code} - {response.text}")
+
+        data = response.json()
+        return self._parse_games(data)
+
+    def _parse_games(self, data: list[dict]) -> list[UpcomingGame]:
+        """Parse API response into UpcomingGame objects."""
+        games = []
+
+        for game_data in data:
+            game = self._parse_single_game(game_data)
+            if game:
+                games.append(game)
+
+        # Sort by commence time
+        games.sort(key=lambda g: g.commence_time)
+
+        return games
+
+    def _parse_single_game(self, data: dict) -> Optional[UpcomingGame]:
+        """Parse a single game from API response."""
+        try:
+            # Parse commence time
+            commence_time = datetime.fromisoformat(data["commence_time"].replace("Z", "+00:00"))
+
+            # Normalize team names
+            home_team = self._normalize_team(data["home_team"])
+            away_team = self._normalize_team(data["away_team"])
+
+            # Parse bookmaker odds
+            bookmakers = []
+            all_spreads_home = []
+            all_totals = []
+            all_home_ml = []
+            all_away_ml = []
+
+            for bm_data in data.get("bookmakers", []):
+                bm_odds = self._parse_bookmaker(bm_data, data["home_team"], data["away_team"])
+                if bm_odds:
+                    bookmakers.append(bm_odds)
+
+                    # Collect for consensus calculation
+                    if bm_odds.spread_home is not None:
+                        all_spreads_home.append(bm_odds.spread_home)
+                    if bm_odds.total_line is not None:
+                        all_totals.append(bm_odds.total_line)
+                    if bm_odds.home_moneyline is not None:
+                        all_home_ml.append(bm_odds.home_moneyline)
+                    if bm_odds.away_moneyline is not None:
+                        all_away_ml.append(bm_odds.away_moneyline)
+
+            # Calculate consensus (average) lines
+            spread_line = round(sum(all_spreads_home) / len(all_spreads_home), 1) if all_spreads_home else None
+            total_line = round(sum(all_totals) / len(all_totals), 1) if all_totals else None
+            home_moneyline = round(sum(all_home_ml) / len(all_home_ml)) if all_home_ml else None
+            away_moneyline = round(sum(all_away_ml) / len(all_away_ml)) if all_away_ml else None
+
+            return UpcomingGame(
+                game_id=data["id"],
+                commence_time=commence_time,
+                home_team=home_team,
+                away_team=away_team,
+                spread_line=spread_line,
+                total_line=total_line,
+                home_moneyline=home_moneyline,
+                away_moneyline=away_moneyline,
+                bookmakers=bookmakers,
+            )
+
+        except (KeyError, ValueError) as e:
+            print(f"Error parsing game: {e}")
+            return None
+
+    def _parse_bookmaker(self, data: dict, home_team: str, away_team: str) -> Optional[BookmakerOdds]:
+        """Parse a single bookmaker's odds."""
+        try:
+            odds = BookmakerOdds(bookmaker=data["key"])
+
+            for market in data.get("markets", []):
+                market_key = market["key"]
+                outcomes = {o["name"]: o for o in market.get("outcomes", [])}
+
+                if market_key == "spreads":
+                    if home_team in outcomes:
+                        odds.spread_home = outcomes[home_team].get("point")
+                        odds.spread_home_price = outcomes[home_team].get("price")
+                    if away_team in outcomes:
+                        odds.spread_away = outcomes[away_team].get("point")
+                        odds.spread_away_price = outcomes[away_team].get("price")
+
+                elif market_key == "totals":
+                    if "Over" in outcomes:
+                        odds.total_line = outcomes["Over"].get("point")
+                        odds.over_price = outcomes["Over"].get("price")
+                    if "Under" in outcomes:
+                        odds.under_price = outcomes["Under"].get("price")
+
+                elif market_key == "h2h":
+                    if home_team in outcomes:
+                        odds.home_moneyline = outcomes[home_team].get("price")
+                    if away_team in outcomes:
+                        odds.away_moneyline = outcomes[away_team].get("price")
+
+            return odds
+
+        except (KeyError, ValueError):
+            return None
+
+    def get_api_usage(self) -> dict:
+        """Get current API usage stats."""
+        return {
+            "requests_remaining": self._requests_remaining,
+            "requests_used": self._requests_used,
+        }
+
+
+def get_upcoming_games(api_key: Optional[str] = None) -> list[UpcomingGame]:
+    """
+    Convenience function to fetch upcoming NFL games with odds.
+
+    Args:
+        api_key: Optional API key. Uses ODDS_API_KEY env var if not provided.
+
+    Returns:
+        List of upcoming games with betting lines
+    """
+    client = OddsAPIClient(api_key=api_key)
+    return client.get_nfl_odds()

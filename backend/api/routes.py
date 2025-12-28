@@ -3,12 +3,22 @@ FastAPI routes for the betting hypothesis tester.
 """
 
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# Load .env file if present
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.schemas import (
     StrategyInput,
@@ -477,3 +487,82 @@ def compare_strategies(request: ComparisonRequest):
         bets_per_simulation=request.bets_per_simulation,
         recommendation=recommendation,
     )
+
+
+# ============================================================================
+# UPCOMING GAMES / ODDS API ENDPOINTS
+# ============================================================================
+
+class UpcomingGameResponse(BaseModel):
+    """Single upcoming game with betting lines."""
+    game_id: str
+    commence_time: datetime
+    home_team: str
+    away_team: str
+    spread_line: Optional[float] = None
+    total_line: Optional[float] = None
+    home_moneyline: Optional[int] = None
+    away_moneyline: Optional[int] = None
+    home_favorite: bool = False
+
+
+class UpcomingGamesResponse(BaseModel):
+    """Response containing all upcoming games."""
+    games: list[UpcomingGameResponse]
+    count: int
+    api_requests_remaining: Optional[int] = None
+    api_requests_used: Optional[int] = None
+    message: str
+
+
+@app.get("/upcoming", response_model=UpcomingGamesResponse)
+def get_upcoming_games():
+    """
+    Fetch upcoming NFL games with current betting lines from The Odds API.
+
+    Requires ODDS_API_KEY environment variable to be set.
+    Free tier: 500 requests/month.
+    """
+    api_key = os.environ.get("ODDS_API_KEY")
+
+    if not api_key:
+        raise HTTPException(
+            400,
+            "ODDS_API_KEY environment variable not set. "
+            "Get a free API key at https://the-odds-api.com/"
+        )
+
+    try:
+        from backend.services.odds_api import OddsAPIClient
+
+        client = OddsAPIClient(api_key=api_key)
+        games = client.get_nfl_odds()
+
+        # Convert to response format
+        game_responses = [
+            UpcomingGameResponse(
+                game_id=g.game_id,
+                commence_time=g.commence_time,
+                home_team=g.home_team,
+                away_team=g.away_team,
+                spread_line=g.spread_line,
+                total_line=g.total_line,
+                home_moneyline=g.home_moneyline,
+                away_moneyline=g.away_moneyline,
+                home_favorite=g.home_favorite,
+            )
+            for g in games
+        ]
+
+        return UpcomingGamesResponse(
+            games=game_responses,
+            count=len(game_responses),
+            api_requests_remaining=client.requests_remaining,
+            api_requests_used=client.requests_used,
+            message=f"Found {len(game_responses)} upcoming NFL games with betting lines.",
+        )
+
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Error fetching odds: {str(e)}")

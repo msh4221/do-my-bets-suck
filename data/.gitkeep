@@ -1,0 +1,3 @@
+# This file ensures the data directory is tracked by git
+# The actual data files (*.db, *.csv) are ignored
+# Run scripts/ingest_nflverse_data.py to populate the database

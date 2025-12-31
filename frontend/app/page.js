@@ -3,8 +3,28 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import PlayerSearch from '../components/PlayerSearch'
 
 const API_URL = 'http://127.0.0.1:8000'
+
+// Prop types for player props
+const PROP_TYPES = [
+  { value: 'passing_yards', label: 'Passing Yards' },
+  { value: 'rushing_yards', label: 'Rushing Yards' },
+  { value: 'receiving_yards', label: 'Receiving Yards' },
+  { value: 'receptions', label: 'Receptions' },
+  { value: 'passing_tds', label: 'Passing TDs' },
+  { value: 'anytime_td', label: 'Anytime TD' },
+]
+
+// Position types for filtering
+const POSITIONS = [
+  { value: '', label: 'All Positions' },
+  { value: 'QB', label: 'QB' },
+  { value: 'RB', label: 'RB' },
+  { value: 'WR', label: 'WR' },
+  { value: 'TE', label: 'TE' },
+]
 
 // Team colors for theming (primary, secondary)
 const TEAM_COLORS = {
@@ -538,6 +558,229 @@ function CompactOptimizerResults({ results, selectedStrategies, onToggleSelect }
   )
 }
 
+// Player Props Form
+function PlayerPropsForm({ onSubmit, loading }) {
+  const [propType, setPropType] = useState('passing_yards')
+  const [betSide, setBetSide] = useState('over')
+  const [line, setLine] = useState(250)
+  const [position, setPosition] = useState('')
+  const [selectedPlayer, setSelectedPlayer] = useState(null)
+  const [seasonStart, setSeasonStart] = useState(2015)
+  const [seasonEnd, setSeasonEnd] = useState(2023)
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onSubmit({
+      prop_type: propType,
+      bet_side: betSide,
+      line: parseFloat(line),
+      position: position || null,
+      player_id: selectedPlayer?.player_id || null,
+      player_name: selectedPlayer?.player_name || null,
+      season_start: seasonStart,
+      season_end: seasonEnd,
+    })
+  }
+
+  // Get appropriate bet sides based on prop type
+  const getBetSideOptions = () => {
+    if (propType === 'anytime_td') {
+      return [{ value: 'yes', label: 'Yes (Scores TD)' }]
+    }
+    return [
+      { value: 'over', label: 'Over' },
+      { value: 'under', label: 'Under' },
+    ]
+  }
+
+  // Get default line based on prop type
+  const getDefaultLine = (type) => {
+    switch (type) {
+      case 'passing_yards': return 250
+      case 'rushing_yards': return 60
+      case 'receiving_yards': return 50
+      case 'receptions': return 4
+      case 'passing_tds': return 1.5
+      case 'anytime_td': return 0.5
+      default: return 100
+    }
+  }
+
+  const handlePropTypeChange = (newType) => {
+    setPropType(newType)
+    setLine(getDefaultLine(newType))
+    if (newType === 'anytime_td') {
+      setBetSide('yes')
+    } else if (betSide === 'yes') {
+      setBetSide('over')
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={styles.form}>
+      <div style={styles.gridContainer}>
+        {/* LEFT COLUMN: Prop Settings */}
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Prop Settings</div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Prop</label>
+            <select
+              value={propType}
+              onChange={(e) => handlePropTypeChange(e.target.value)}
+              style={styles.inlineSelect}
+              disabled={loading}
+            >
+              {PROP_TYPES.map((pt) => (
+                <option key={pt.value} value={pt.value}>{pt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Side</label>
+            <select
+              value={betSide}
+              onChange={(e) => setBetSide(e.target.value)}
+              style={styles.inlineSelect}
+              disabled={loading}
+            >
+              {getBetSideOptions().map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Line</label>
+            <input
+              type="number"
+              value={line}
+              onChange={(e) => setLine(e.target.value)}
+              step={propType === 'receptions' || propType.includes('td') ? 0.5 : 5}
+              style={styles.inlineInput}
+              disabled={loading || propType === 'anytime_td'}
+            />
+          </div>
+        </div>
+
+        {/* MIDDLE COLUMN: Player Filter */}
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Player Filter</div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Position</label>
+            <select
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
+              style={styles.inlineSelect}
+              disabled={loading}
+            >
+              {POSITIONS.map((pos) => (
+                <option key={pos.value} value={pos.value}>{pos.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Player</label>
+            <PlayerSearch
+              value={selectedPlayer}
+              onChange={setSelectedPlayer}
+              position={position || null}
+              placeholder="Any player..."
+              disabled={loading}
+            />
+          </div>
+          <div style={styles.propHint}>
+            Leave player blank to test all players at the position
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Seasons + Action */}
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Backtest Range</div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Seasons</label>
+            <div style={styles.miniRangeRow}>
+              <input
+                type="number"
+                value={seasonStart}
+                onChange={(e) => setSeasonStart(parseInt(e.target.value))}
+                min={1999}
+                max={2023}
+                style={styles.miniInput}
+                disabled={loading}
+              />
+              <span style={styles.miniSeparator}>-</span>
+              <input
+                type="number"
+                value={seasonEnd}
+                onChange={(e) => setSeasonEnd(parseInt(e.target.value))}
+                min={1999}
+                max={2023}
+                style={styles.miniInput}
+                disabled={loading}
+              />
+            </div>
+          </div>
+          <div style={styles.propInfoBox}>
+            Tests historical player performance against your line. Uses standard -110 odds.
+          </div>
+          <button type="submit" disabled={loading} style={styles.submitButton}>
+            {loading ? 'Testing...' : '▶ Test Prop Strategy'}
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
+// Compact Prop Results
+function CompactPropResults({ data }) {
+  if (!data) return null
+  const { result, summary } = data
+  const isProfit = result.roi_pct > 0
+
+  return (
+    <div style={styles.compactResultsContainer}>
+      <div style={styles.compactResultsGrid}>
+        <div style={{
+          ...styles.compactVerdict,
+          backgroundColor: isProfit ? '#e6ffe6' : '#ffe6e6',
+          borderColor: isProfit ? '#00aa00' : '#aa0000',
+        }}>
+          <div style={styles.verdictText}>{isProfit ? '✓ PROFITABLE' : '✗ UNPROFITABLE'}</div>
+          <div style={styles.roiHero}>
+            <span style={{ color: isProfit ? '#00aa00' : '#aa0000' }}>
+              {result.roi_pct > 0 ? '+' : ''}{result.roi_pct}%
+            </span>
+            <span style={styles.roiLabel}>ROI</span>
+          </div>
+        </div>
+        <div style={styles.compactMetricsRow}>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{result.total_bets}</span>
+            <span style={styles.compactMetricLabel}>Bets</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{result.wins}-{result.losses}-{result.pushes}</span>
+            <span style={styles.compactMetricLabel}>W-L-P</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{result.win_rate}%</span>
+            <span style={styles.compactMetricLabel}>Win Rate</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{result.profit_units > 0 ? '+' : ''}{result.profit_units}u</span>
+            <span style={styles.compactMetricLabel}>Profit</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{result.max_drawdown}u</span>
+            <span style={styles.compactMetricLabel}>Max DD</span>
+          </div>
+        </div>
+      </div>
+      {summary && <div style={styles.compactSummary}>{summary}</div>}
+    </div>
+  )
+}
+
 // Compact Strategy Card
 function CompactStrategyCard({ strategy, rank, selected, onToggleSelect }) {
   const projection = strategy.projection
@@ -934,6 +1177,11 @@ export default function Home() {
   const [optError, setOptError] = useState(null)
   const [selectedStrategies, setSelectedStrategies] = useState(new Set())
 
+  // Player Props state
+  const [propLoading, setPropLoading] = useState(false)
+  const [propResults, setPropResults] = useState(null)
+  const [propError, setPropError] = useState(null)
+
   // Get gradient colors based on favorite team
   const teamColors = TEAM_COLORS[favoriteTeam] || TEAM_COLORS['']
   const gradientStyle = {
@@ -1114,6 +1362,50 @@ export default function Home() {
     setSelectedStrategies(newSelected)
   }
 
+  // Player Props backtest function
+  const runPropBacktest = async (config) => {
+    setPropLoading(true)
+    setPropError(null)
+    setPropResults(null)
+
+    try {
+      const strategyInput = {
+        name: config.player_name
+          ? `${config.player_name} ${config.bet_side} ${config.line}`
+          : `All ${config.position || 'players'} ${config.bet_side} ${config.line}`,
+        description: `Prop bet on ${config.prop_type}`,
+        prop_type: config.prop_type,
+        bet_side: config.bet_side,
+        line: config.line,
+        player_id: config.player_id,
+        player_name: config.player_name,
+        position: config.position,
+        season_start: config.season_start,
+        season_end: config.season_end,
+        stake_unit: 1.0,
+        odds: -110,
+      }
+
+      const response = await fetch(`${API_URL}/props/backtest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: strategyInput }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      setPropResults(data)
+    } catch (err) {
+      setPropError(`Failed to run prop backtest: ${err.message}. Make sure player stats are ingested.`)
+    } finally {
+      setPropLoading(false)
+    }
+  }
+
   return (
     <div style={gradientStyle}>
       {/* Team Selector */}
@@ -1170,6 +1462,22 @@ export default function Home() {
               selectedStrategies={selectedStrategies}
               onToggleSelect={toggleStrategySelection}
             />
+          </div>
+        )}
+
+        {/* Player Props Section */}
+        <div style={styles.sectionBox}>
+          <div style={styles.sectionHeader}>Player Props Backtester</div>
+          <PlayerPropsForm onSubmit={runPropBacktest} loading={propLoading} />
+        </div>
+
+        {propError && <div style={styles.error}>{propError}</div>}
+
+        {/* Player Props Results */}
+        {propResults && (
+          <div style={styles.sectionBox}>
+            <div style={styles.sectionHeader}>Player Props Results</div>
+            <CompactPropResults data={propResults} />
           </div>
         )}
       </div>
@@ -1278,6 +1586,22 @@ const styles = {
   },
   // Optimizer Styles
   optInfoBox: {
+    fontSize: '10px',
+    color: '#666',
+    padding: '8px',
+    backgroundColor: '#f0f7ff',
+    borderRadius: '4px',
+    marginBottom: '8px',
+    lineHeight: '1.4',
+  },
+  // Player Props Styles
+  propHint: {
+    fontSize: '10px',
+    color: '#888',
+    fontStyle: 'italic',
+    marginTop: '4px',
+  },
+  propInfoBox: {
     fontSize: '10px',
     color: '#666',
     padding: '8px',

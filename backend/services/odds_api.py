@@ -7,9 +7,11 @@ Free tier: 500 requests/month
 Usage:
     client = OddsAPIClient(api_key="your_key")
     games = client.get_nfl_odds()
+    props = client.get_player_props_for_event(event_id)
 """
 
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +66,32 @@ class UpcomingGame:
     def __post_init__(self):
         if self.spread_line is not None:
             self.home_favorite = self.spread_line < 0
+
+
+@dataclass
+class PlayerPropLine:
+    """A single player prop betting line."""
+    player_name: str
+    prop_type: str  # e.g., "player_pass_yds", "player_rush_yds"
+    line: float  # e.g., 274.5
+    over_price: Optional[int] = None  # American odds for over
+    under_price: Optional[int] = None  # American odds for under
+    bookmaker: str = ""
+
+
+@dataclass
+class GamePlayerProps:
+    """All player props for a single game."""
+    event_id: str
+    home_team: str
+    away_team: str
+    commence_time: datetime
+    props: list[PlayerPropLine] = field(default_factory=list)
+
+
+# Simple in-memory cache for player props (15-minute TTL)
+_props_cache: dict[str, tuple[float, list]] = {}
+CACHE_TTL = 15 * 60  # 15 minutes in seconds
 
 
 class OddsAPIClient:
@@ -290,6 +318,216 @@ class OddsAPIClient:
             "requests_remaining": self._requests_remaining,
             "requests_used": self._requests_used,
         }
+
+    def get_nfl_events(self) -> list[dict]:
+        """
+        Get list of upcoming NFL events (games) with their IDs.
+
+        Returns:
+            List of event dicts with id, home_team, away_team, commence_time
+        """
+        url = f"{self.BASE_URL}/sports/{self.NFL_SPORT}/events"
+
+        params = {
+            "apiKey": self.api_key,
+        }
+
+        response = requests.get(url, params=params, timeout=30)
+
+        # Track API usage from response headers
+        self._requests_remaining = int(response.headers.get("x-requests-remaining", 0))
+        self._requests_used = int(response.headers.get("x-requests-used", 0))
+
+        if response.status_code != 200:
+            raise ValueError(f"API error: {response.status_code} - {response.text}")
+
+        events = []
+        for event in response.json():
+            events.append({
+                "event_id": event["id"],
+                "home_team": self._normalize_team(event["home_team"]),
+                "away_team": self._normalize_team(event["away_team"]),
+                "commence_time": event["commence_time"],
+            })
+
+        return events
+
+    def get_player_props_for_event(
+        self,
+        event_id: str,
+        markets: list[str] = None,
+        use_cache: bool = True
+    ) -> GamePlayerProps:
+        """
+        Fetch player props for a specific event.
+
+        Args:
+            event_id: The event/game ID from get_nfl_events()
+            markets: List of prop markets. Defaults to common props.
+                Options: player_pass_yds, player_rush_yds, player_reception_yds,
+                        player_receptions, player_pass_tds, player_anytime_td
+            use_cache: Whether to use cached data if available
+
+        Returns:
+            GamePlayerProps with all player prop lines
+        """
+        global _props_cache
+
+        # Check cache first
+        cache_key = f"{event_id}:{','.join(markets or [])}"
+        if use_cache and cache_key in _props_cache:
+            cached_time, cached_data = _props_cache[cache_key]
+            if time.time() - cached_time < CACHE_TTL:
+                return cached_data
+
+        # Default markets
+        if markets is None:
+            markets = [
+                "player_pass_yds",
+                "player_rush_yds",
+                "player_reception_yds",
+                "player_receptions",
+                "player_pass_tds",
+                "player_anytime_td",
+            ]
+
+        url = f"{self.BASE_URL}/sports/{self.NFL_SPORT}/events/{event_id}/odds"
+
+        params = {
+            "apiKey": self.api_key,
+            "regions": "us",
+            "markets": ",".join(markets),
+            "oddsFormat": "american",
+        }
+
+        response = requests.get(url, params=params, timeout=30)
+
+        # Track API usage
+        self._requests_remaining = int(response.headers.get("x-requests-remaining", 0))
+        self._requests_used = int(response.headers.get("x-requests-used", 0))
+
+        if response.status_code == 404:
+            # Event not found or no props available
+            return GamePlayerProps(
+                event_id=event_id,
+                home_team="",
+                away_team="",
+                commence_time=datetime.now(),
+                props=[]
+            )
+        elif response.status_code != 200:
+            raise ValueError(f"API error: {response.status_code} - {response.text}")
+
+        data = response.json()
+        result = self._parse_player_props(event_id, data)
+
+        # Cache the result
+        _props_cache[cache_key] = (time.time(), result)
+
+        return result
+
+    def _parse_player_props(self, event_id: str, data: dict) -> GamePlayerProps:
+        """Parse player props from API response."""
+        home_team = self._normalize_team(data.get("home_team", ""))
+        away_team = self._normalize_team(data.get("away_team", ""))
+
+        commence_time = datetime.now()
+        if data.get("commence_time"):
+            commence_time = datetime.fromisoformat(
+                data["commence_time"].replace("Z", "+00:00")
+            )
+
+        props = []
+
+        for bookmaker in data.get("bookmakers", []):
+            bookmaker_key = bookmaker.get("key", "")
+
+            for market in bookmaker.get("markets", []):
+                market_key = market.get("key", "")
+
+                # Group outcomes by player (description field)
+                player_outcomes = {}
+                for outcome in market.get("outcomes", []):
+                    player = outcome.get("description", "")
+                    if not player:
+                        continue
+
+                    if player not in player_outcomes:
+                        player_outcomes[player] = {}
+
+                    name = outcome.get("name", "")
+                    player_outcomes[player][name] = {
+                        "price": outcome.get("price"),
+                        "point": outcome.get("point"),
+                    }
+
+                # Create prop lines from grouped outcomes
+                for player, outcomes in player_outcomes.items():
+                    over_data = outcomes.get("Over", {})
+                    under_data = outcomes.get("Under", {})
+                    yes_data = outcomes.get("Yes", {})
+
+                    # For anytime TD, use Yes outcome
+                    if market_key == "player_anytime_td" and yes_data:
+                        props.append(PlayerPropLine(
+                            player_name=player,
+                            prop_type=market_key,
+                            line=0.5,  # Anytime TD is essentially over 0.5 TDs
+                            over_price=yes_data.get("price"),
+                            under_price=None,
+                            bookmaker=bookmaker_key,
+                        ))
+                    # For over/under props
+                    elif over_data.get("point") is not None:
+                        props.append(PlayerPropLine(
+                            player_name=player,
+                            prop_type=market_key,
+                            line=over_data.get("point"),
+                            over_price=over_data.get("price"),
+                            under_price=under_data.get("price"),
+                            bookmaker=bookmaker_key,
+                        ))
+
+        return GamePlayerProps(
+            event_id=event_id,
+            home_team=home_team,
+            away_team=away_team,
+            commence_time=commence_time,
+            props=props,
+        )
+
+    def get_all_player_props(
+        self,
+        markets: list[str] = None
+    ) -> list[GamePlayerProps]:
+        """
+        Fetch player props for all upcoming NFL games.
+
+        Warning: This makes multiple API calls (1 per game).
+        Use sparingly due to 500/month limit.
+
+        Args:
+            markets: List of prop markets to fetch
+
+        Returns:
+            List of GamePlayerProps for all upcoming games
+        """
+        events = self.get_nfl_events()
+        all_props = []
+
+        for event in events:
+            try:
+                props = self.get_player_props_for_event(
+                    event["event_id"],
+                    markets=markets
+                )
+                if props.props:  # Only include if there are props
+                    all_props.append(props)
+            except Exception as e:
+                print(f"Error fetching props for {event['event_id']}: {e}")
+                continue
+
+        return all_props
 
 
 def get_upcoming_games(api_key: Optional[str] = None) -> list[UpcomingGame]:

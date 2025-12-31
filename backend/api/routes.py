@@ -38,7 +38,18 @@ from backend.schemas import (
     Operator,
 )
 from backend.data_sources import NFLKaggleSource
+from backend.data_sources.nfl_player_stats import NFLPlayerStatsSource
 from backend.engine import run_backtest, run_optimizer, run_monte_carlo
+from backend.engine.prop_settlement import settle_prop_bet
+from backend.schemas.player_props import (
+    PropType,
+    PropBetSide,
+    PlayerPropStrategy,
+    PropBacktestRequest,
+    PlayerSearchResult,
+    PropBacktestResult,
+    PROP_TYPE_TO_COLUMN,
+)
 from backend.llm import (
     sanitize_input,
     verify_strategy_json,
@@ -67,6 +78,7 @@ app.add_middleware(
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "nfl.db"
 data_source: Optional[NFLKaggleSource] = None
+player_stats_source: Optional[NFLPlayerStatsSource] = None
 
 
 def get_data_source() -> NFLKaggleSource:
@@ -76,6 +88,15 @@ def get_data_source() -> NFLKaggleSource:
             raise HTTPException(500, "Database not found. Run scripts/ingest_data.py first.")
         data_source = NFLKaggleSource(db_path=DB_PATH)
     return data_source
+
+
+def get_player_stats_source() -> NFLPlayerStatsSource:
+    global player_stats_source
+    if player_stats_source is None:
+        if not DB_PATH.exists():
+            raise HTTPException(500, "Database not found. Run scripts/ingest_data.py first.")
+        player_stats_source = NFLPlayerStatsSource(db_path=DB_PATH)
+    return player_stats_source
 
 
 # Request/Response models
@@ -566,3 +587,275 @@ def get_upcoming_games():
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, f"Error fetching odds: {str(e)}")
+
+
+# ============================================================================
+# PLAYER PROPS ENDPOINTS
+# ============================================================================
+
+class PlayerSearchResponse(BaseModel):
+    """Response for player search."""
+    players: list[PlayerSearchResult]
+    count: int
+
+
+class PropBacktestResponse(BaseModel):
+    """Response for player prop backtest."""
+    result: PropBacktestResult
+    summary: str
+
+
+class PlayerPropLineResponse(BaseModel):
+    """A single player prop line."""
+    player_name: str
+    prop_type: str
+    line: float
+    over_price: Optional[int] = None
+    under_price: Optional[int] = None
+    bookmaker: str
+
+
+class GamePropsResponse(BaseModel):
+    """Player props for a single game."""
+    event_id: str
+    home_team: str
+    away_team: str
+    props: list[PlayerPropLineResponse]
+
+
+class AllPropsResponse(BaseModel):
+    """All current player props."""
+    games: list[GamePropsResponse]
+    total_props: int
+    api_requests_remaining: Optional[int] = None
+
+
+@app.get("/players/search", response_model=PlayerSearchResponse)
+def search_players(
+    query: str = "",
+    position: Optional[str] = None,
+    limit: int = 20
+):
+    """
+    Search for players by name for autocomplete.
+
+    Args:
+        query: Search string (partial name match)
+        position: Filter by position (QB, RB, WR, TE)
+        limit: Maximum results to return (default 20)
+    """
+    if len(query) < 2:
+        return PlayerSearchResponse(players=[], count=0)
+
+    try:
+        source = get_player_stats_source()
+        results = source.search_players(query, position=position, limit=limit)
+
+        players = [
+            PlayerSearchResult(
+                player_id=r["player_id"],
+                name=r["name"],
+                position=r["position"] or "",
+                team=r["team"] or "",
+                last_season=r["last_season"] or 0
+            )
+            for r in results
+        ]
+
+        return PlayerSearchResponse(players=players, count=len(players))
+
+    except Exception as e:
+        raise HTTPException(500, f"Error searching players: {str(e)}")
+
+
+@app.post("/props/backtest", response_model=PropBacktestResponse)
+def backtest_player_prop(request: PropBacktestRequest):
+    """
+    Backtest a player prop strategy against historical data.
+
+    Example strategy: Bet over 250 passing yards for all QBs from 2020-2023
+    """
+    strategy = request.strategy
+
+    try:
+        source = get_player_stats_source()
+
+        # Get the database column for this prop type
+        stat_column = PROP_TYPE_TO_COLUMN.get(strategy.prop_type)
+        if not stat_column:
+            raise HTTPException(400, f"Unsupported prop type: {strategy.prop_type}")
+
+        # Get player game data
+        df = source.get_all_player_games_with_stat(
+            stat_type=stat_column,
+            position=strategy.position.value if strategy.position else None,
+            season_start=strategy.season_start,
+            season_end=strategy.season_end,
+        )
+
+        # If specific player, filter
+        if strategy.player_id:
+            df = df[df["player_id"] == strategy.player_id]
+        elif strategy.player_name:
+            df = df[df["player_name"].str.contains(strategy.player_name, case=False, na=False)]
+
+        if len(df) == 0:
+            return PropBacktestResponse(
+                result=PropBacktestResult(
+                    strategy_name=strategy.name,
+                    total_bets=0,
+                    wins=0,
+                    losses=0,
+                    pushes=0,
+                    win_rate=0.0,
+                    profit_units=0.0,
+                    roi_pct=0.0,
+                    max_drawdown=0.0,
+                ),
+                summary="No matching games found for this strategy."
+            )
+
+        # Settle each bet
+        wins = 0
+        losses = 0
+        pushes = 0
+        total_profit = 0.0
+        profits = []
+
+        for _, row in df.iterrows():
+            actual_stat = row["actual_stat"]
+            result, profit = settle_prop_bet(
+                actual_stat=actual_stat,
+                line=strategy.line,
+                bet_side=strategy.bet_side.value,
+                prop_type=strategy.prop_type.value,
+                odds=strategy.odds
+            )
+
+            if result == "win":
+                wins += 1
+            elif result == "loss":
+                losses += 1
+            elif result == "push":
+                pushes += 1
+            else:
+                continue  # no_data
+
+            total_profit += profit * strategy.stake_unit
+            profits.append(total_profit)
+
+        total_bets = wins + losses + pushes
+        win_rate = (wins / total_bets * 100) if total_bets > 0 else 0
+
+        # Calculate ROI (amount wagered includes vig for losses)
+        total_risked = total_bets * strategy.stake_unit * 1.1
+        roi_pct = (total_profit / total_risked * 100) if total_risked > 0 else 0
+
+        # Calculate max drawdown
+        max_drawdown = 0.0
+        if profits:
+            running_max = 0.0
+            for p in profits:
+                running_max = max(running_max, p)
+                drawdown = running_max - p
+                max_drawdown = max(max_drawdown, drawdown)
+
+        result = PropBacktestResult(
+            strategy_name=strategy.name,
+            total_bets=total_bets,
+            wins=wins,
+            losses=losses,
+            pushes=pushes,
+            win_rate=round(win_rate, 1),
+            profit_units=round(total_profit, 2),
+            roi_pct=round(roi_pct, 1),
+            max_drawdown=round(max_drawdown, 2),
+        )
+
+        # Generate summary
+        if roi_pct > 0:
+            verdict = "PROFITABLE"
+        else:
+            verdict = "UNPROFITABLE"
+
+        summary = f"{verdict}: {result.win_rate}% win rate, {result.roi_pct}% ROI over {total_bets} bets"
+
+        return PropBacktestResponse(result=result, summary=summary)
+
+    except Exception as e:
+        raise HTTPException(500, f"Error running prop backtest: {str(e)}")
+
+
+@app.get("/props/upcoming", response_model=AllPropsResponse)
+def get_upcoming_props(event_id: Optional[str] = None):
+    """
+    Fetch current player prop lines from The Odds API.
+
+    Args:
+        event_id: Optional specific event ID. If not provided, fetches all events.
+
+    Warning: Each event is a separate API call. Use sparingly (500/month limit).
+    """
+    api_key = os.environ.get("ODDS_API_KEY")
+
+    if not api_key:
+        raise HTTPException(
+            400,
+            "ODDS_API_KEY environment variable not set. "
+            "Get a free API key at https://the-odds-api.com/"
+        )
+
+    try:
+        from backend.services.odds_api import OddsAPIClient
+
+        client = OddsAPIClient(api_key=api_key)
+
+        if event_id:
+            # Fetch props for specific event
+            props = client.get_player_props_for_event(event_id)
+            games = [props] if props.props else []
+        else:
+            # Fetch events first, then get props for first game only
+            # (to conserve API calls)
+            events = client.get_nfl_events()
+            if events:
+                props = client.get_player_props_for_event(events[0]["event_id"])
+                games = [props] if props.props else []
+            else:
+                games = []
+
+        # Convert to response format
+        game_responses = []
+        total_props = 0
+
+        for g in games:
+            prop_lines = [
+                PlayerPropLineResponse(
+                    player_name=p.player_name,
+                    prop_type=p.prop_type,
+                    line=p.line,
+                    over_price=p.over_price,
+                    under_price=p.under_price,
+                    bookmaker=p.bookmaker,
+                )
+                for p in g.props
+            ]
+            total_props += len(prop_lines)
+
+            game_responses.append(GamePropsResponse(
+                event_id=g.event_id,
+                home_team=g.home_team,
+                away_team=g.away_team,
+                props=prop_lines,
+            ))
+
+        return AllPropsResponse(
+            games=game_responses,
+            total_props=total_props,
+            api_requests_remaining=client.requests_remaining,
+        )
+
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Error fetching player props: {str(e)}")

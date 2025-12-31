@@ -26,12 +26,11 @@ const POSITIONS = [
   { value: 'TE', label: 'TE' },
 ]
 
-// Team colors for theming (primary, secondary)
+// Team colors for theming (primary, secondary) - modern team names only
 const TEAM_COLORS = {
   '': { primary: '#1a1a2e', secondary: '#16213e' }, // Default dark blue
   'Arizona Cardinals': { primary: '#97233F', secondary: '#000000' },
   'Atlanta Falcons': { primary: '#A71930', secondary: '#000000' },
-  'Baltimore Colts': { primary: '#004C54', secondary: '#FFFFFF' },
   'Baltimore Ravens': { primary: '#241773', secondary: '#000000' },
   'Buffalo Bills': { primary: '#00338D', secondary: '#C60C30' },
   'Carolina Panthers': { primary: '#0085CA', secondary: '#101820' },
@@ -42,72 +41,66 @@ const TEAM_COLORS = {
   'Denver Broncos': { primary: '#FB4F14', secondary: '#002244' },
   'Detroit Lions': { primary: '#0076B6', secondary: '#B0B7BC' },
   'Green Bay Packers': { primary: '#203731', secondary: '#FFB612' },
-  'Houston Oilers': { primary: '#418FDE', secondary: '#C41E3A' },
   'Houston Texans': { primary: '#03202F', secondary: '#A71930' },
   'Indianapolis Colts': { primary: '#002C5F', secondary: '#A2AAAD' },
   'Jacksonville Jaguars': { primary: '#101820', secondary: '#D7A22A' },
   'Kansas City Chiefs': { primary: '#E31837', secondary: '#FFB81C' },
-  'Los Angeles Chargers': { primary: '#0080C6', secondary: '#FFC20E' },
-  'Los Angeles Raiders': { primary: '#000000', secondary: '#A5ACAF' },
-  'Los Angeles Rams': { primary: '#003594', secondary: '#FFA300' },
+  'Las Vegas Raiders': { primary: '#000000', secondary: '#A5ACAF' },  // Includes Oakland Raiders history
+  'Los Angeles Chargers': { primary: '#0080C6', secondary: '#FFC20E' },  // Includes San Diego history
+  'Los Angeles Rams': { primary: '#003594', secondary: '#FFA300' },  // Includes St. Louis history
   'Miami Dolphins': { primary: '#008E97', secondary: '#FC4C02' },
   'Minnesota Vikings': { primary: '#4F2683', secondary: '#FFC62F' },
   'New England Patriots': { primary: '#002244', secondary: '#C60C30' },
   'New Orleans Saints': { primary: '#D3BC8D', secondary: '#101820' },
   'New York Giants': { primary: '#0B2265', secondary: '#A71930' },
   'New York Jets': { primary: '#125740', secondary: '#000000' },
-  'Oakland Raiders': { primary: '#000000', secondary: '#A5ACAF' },
   'Philadelphia Eagles': { primary: '#004C54', secondary: '#A5ACAF' },
-  'Phoenix Cardinals': { primary: '#97233F', secondary: '#000000' },
   'Pittsburgh Steelers': { primary: '#FFB612', secondary: '#101820' },
-  'San Diego Chargers': { primary: '#0080C6', secondary: '#FFC20E' },
   'San Francisco 49ers': { primary: '#AA0000', secondary: '#B3995D' },
   'Seattle Seahawks': { primary: '#002244', secondary: '#69BE28' },
-  'St. Louis Cardinals': { primary: '#97233F', secondary: '#000000' },
-  'St. Louis Rams': { primary: '#002244', secondary: '#B3995D' },
   'Tampa Bay Buccaneers': { primary: '#D50A0A', secondary: '#34302B' },
-  'Tennessee Oilers': { primary: '#418FDE', secondary: '#C41E3A' },
   'Tennessee Titans': { primary: '#0C2340', secondary: '#4B92DB' },
-  'Washington Redskins': { primary: '#773141', secondary: '#FFB612' },
+  'Washington Commanders': { primary: '#773141', secondary: '#FFB612' },
 }
 
-// Map full team names to database abbreviations
+// Map full team names to database abbreviations (includes historical abbreviations for relocated teams)
+// When a franchise relocated, we include all historical abbreviations to get complete franchise history
 const TEAM_ABBREV_MAP = {
-  'Arizona Cardinals': 'ARI',
-  'Atlanta Falcons': 'ATL',
-  'Baltimore Ravens': 'BAL',
-  'Buffalo Bills': 'BUF',
-  'Carolina Panthers': 'CAR',
-  'Chicago Bears': 'CHI',
-  'Cincinnati Bengals': 'CIN',
-  'Cleveland Browns': 'CLE',
-  'Dallas Cowboys': 'DAL',
-  'Denver Broncos': 'DEN',
-  'Detroit Lions': 'DET',
-  'Green Bay Packers': 'GB',
-  'Houston Texans': 'HOU',
-  'Indianapolis Colts': 'IND',
-  'Jacksonville Jaguars': 'JAX',
-  'Kansas City Chiefs': 'KC',
-  'Las Vegas Raiders': 'LV',
-  'Los Angeles Chargers': 'LAC',
-  'Los Angeles Rams': 'LA',
-  'Miami Dolphins': 'MIA',
-  'Minnesota Vikings': 'MIN',
-  'New England Patriots': 'NE',
-  'New Orleans Saints': 'NO',
-  'New York Giants': 'NYG',
-  'New York Jets': 'NYJ',
-  'Philadelphia Eagles': 'PHI',
-  'Pittsburgh Steelers': 'PIT',
-  'San Francisco 49ers': 'SF',
-  'Seattle Seahawks': 'SEA',
-  'Tampa Bay Buccaneers': 'TB',
-  'Tennessee Titans': 'TEN',
-  'Washington Commanders': 'WAS',
+  'Arizona Cardinals': ['ARI'],  // Was Phoenix Cardinals, St. Louis Cardinals (but data starts 1999, already in AZ)
+  'Atlanta Falcons': ['ATL'],
+  'Baltimore Ravens': ['BAL'],
+  'Buffalo Bills': ['BUF'],
+  'Carolina Panthers': ['CAR'],
+  'Chicago Bears': ['CHI'],
+  'Cincinnati Bengals': ['CIN'],
+  'Cleveland Browns': ['CLE'],
+  'Dallas Cowboys': ['DAL'],
+  'Denver Broncos': ['DEN'],
+  'Detroit Lions': ['DET'],
+  'Green Bay Packers': ['GB'],
+  'Houston Texans': ['HOU'],  // New franchise 2002, NOT the Oilers
+  'Indianapolis Colts': ['IND'],  // Was Baltimore Colts (but data starts 1999, already in Indy)
+  'Jacksonville Jaguars': ['JAX'],
+  'Kansas City Chiefs': ['KC'],
+  'Las Vegas Raiders': ['LV', 'OAK'],  // Oakland Raiders 1999-2019, Las Vegas 2020+
+  'Los Angeles Chargers': ['LAC', 'SD'],  // San Diego 1999-2016, LA 2017+
+  'Los Angeles Rams': ['LA', 'STL'],  // St. Louis 1999-2015, LA 2016+
+  'Miami Dolphins': ['MIA'],
+  'Minnesota Vikings': ['MIN'],
+  'New England Patriots': ['NE'],
+  'New Orleans Saints': ['NO'],
+  'New York Giants': ['NYG'],
+  'New York Jets': ['NYJ'],
+  'Philadelphia Eagles': ['PHI'],
+  'Pittsburgh Steelers': ['PIT'],
+  'San Francisco 49ers': ['SF'],
+  'Seattle Seahawks': ['SEA'],
+  'Tampa Bay Buccaneers': ['TB'],
+  'Tennessee Titans': ['TEN'],  // Was Houston/Tennessee Oilers (but data starts 1999, already Titans)
+  'Washington Commanders': ['WAS'],  // Was Redskins, Football Team
 }
 
-// NFL Teams (includes historical names for older data)
+// NFL Teams (modern names only - historical franchises are consolidated)
 const NFL_TEAMS = [
   '',
   'Arizona Cardinals', 'Atlanta Falcons', 'Baltimore Ravens',
@@ -1271,9 +1264,9 @@ export default function Home() {
         if (filters.opponent) strategyName += ` vs ${filters.opponent}`
       }
 
-      // Convert team names to abbreviations
-      const teamAbbrev = filters.team ? (TEAM_ABBREV_MAP[filters.team] || filters.team) : null
-      const opponentAbbrev = filters.opponent ? (TEAM_ABBREV_MAP[filters.opponent] || filters.opponent) : null
+      // Convert team names to abbreviations (returns array for relocated franchises)
+      const teamAbbrevs = filters.team ? (TEAM_ABBREV_MAP[filters.team] || [filters.team]) : null
+      const opponentAbbrevs = filters.opponent ? (TEAM_ABBREV_MAP[filters.opponent] || [filters.opponent]) : null
 
       const strategyInput = {
         name: strategyName,
@@ -1282,8 +1275,8 @@ export default function Home() {
         market: filters.market,
         bet_side: filters.bet_side,
         filters: backendFilters,
-        team: teamAbbrev,
-        opponent: opponentAbbrev,
+        team: teamAbbrevs,  // Now an array of abbreviations (e.g., ['LV', 'OAK'] for Raiders)
+        opponent: opponentAbbrevs,
         season_start: filters.season_start,
         season_end: filters.season_end,
         stake_unit: 1.0,

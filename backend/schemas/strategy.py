@@ -5,7 +5,7 @@ A Strategy defines what bets to make and under what conditions.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -63,8 +63,9 @@ class StrategyInput(BaseModel):
     )
 
     # Team filters (supports OR logic: team can be home OR away)
-    team: Optional[str] = Field(None, description="Specific team to bet on (home or away)")
-    opponent: Optional[str] = Field(None, description="Specific opponent to filter for")
+    # Accepts single abbreviation or list of abbreviations (for relocated franchises)
+    team: Optional[Union[str, list[str]]] = Field(None, description="Team abbreviation(s) to bet on")
+    opponent: Optional[Union[str, list[str]]] = Field(None, description="Opponent abbreviation(s) to filter for")
 
     # Time range for backtest
     season_start: Optional[int] = Field(None, description="First season to include")

@@ -61,20 +61,24 @@ def run_backtest(
     filtered_games = apply_filters(games, strategy.filters)
 
     # Apply team filters (supports OR logic: team can be home OR away)
-    if strategy.team and strategy.opponent:
-        # Both specified: must be a matchup between these two teams
+    # Teams can be a single abbreviation or a list (for relocated franchises like OAK/LV)
+    team_list = strategy.team if isinstance(strategy.team, list) else ([strategy.team] if strategy.team else None)
+    opp_list = strategy.opponent if isinstance(strategy.opponent, list) else ([strategy.opponent] if strategy.opponent else None)
+
+    if team_list and opp_list:
+        # Both specified: must be a matchup between these two teams (any of their abbreviations)
         matchup_mask = (
-            ((filtered_games["home_team"] == strategy.team) & (filtered_games["away_team"] == strategy.opponent)) |
-            ((filtered_games["away_team"] == strategy.team) & (filtered_games["home_team"] == strategy.opponent))
+            (filtered_games["home_team"].isin(team_list) & filtered_games["away_team"].isin(opp_list)) |
+            (filtered_games["away_team"].isin(team_list) & filtered_games["home_team"].isin(opp_list))
         )
         filtered_games = filtered_games[matchup_mask]
-    elif strategy.team:
-        # Only team specified: any game involving this team
-        team_mask = (filtered_games["home_team"] == strategy.team) | (filtered_games["away_team"] == strategy.team)
+    elif team_list:
+        # Only team specified: any game involving this team (any of its abbreviations)
+        team_mask = filtered_games["home_team"].isin(team_list) | filtered_games["away_team"].isin(team_list)
         filtered_games = filtered_games[team_mask]
-    elif strategy.opponent:
-        # Only opponent specified: any game involving this opponent
-        opp_mask = (filtered_games["home_team"] == strategy.opponent) | (filtered_games["away_team"] == strategy.opponent)
+    elif opp_list:
+        # Only opponent specified: any game involving this opponent (any of its abbreviations)
+        opp_mask = filtered_games["home_team"].isin(opp_list) | filtered_games["away_team"].isin(opp_list)
         filtered_games = filtered_games[opp_mask]
 
     if filtered_games.empty:
@@ -95,7 +99,14 @@ def run_backtest(
     for _, row in filtered_games.iterrows():
         # Pass selected_team for "team" bet side (spread and moneyline only)
         if strategy.bet_side.value == "team" and strategy.market != Market.TOTAL:
-            result, profit = settle_func(row, strategy.bet_side.value, selected_team=strategy.team)
+            # Find which team abbreviation matches this game (for relocated franchises)
+            selected_team = None
+            if team_list:
+                if row["home_team"] in team_list:
+                    selected_team = row["home_team"]
+                elif row["away_team"] in team_list:
+                    selected_team = row["away_team"]
+            result, profit = settle_func(row, strategy.bet_side.value, selected_team=selected_team)
         else:
             result, profit = settle_func(row, strategy.bet_side.value)
 

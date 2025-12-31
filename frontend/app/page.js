@@ -3,8 +3,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import RangeSlider from '../components/RangeSlider'
-import FilterSection from '../components/FilterSection'
 
 const API_URL = 'http://127.0.0.1:8000'
 
@@ -53,20 +51,56 @@ const TEAM_COLORS = {
   'Washington Redskins': { primary: '#773141', secondary: '#FFB612' },
 }
 
+// Map full team names to database abbreviations
+const TEAM_ABBREV_MAP = {
+  'Arizona Cardinals': 'ARI',
+  'Atlanta Falcons': 'ATL',
+  'Baltimore Ravens': 'BAL',
+  'Buffalo Bills': 'BUF',
+  'Carolina Panthers': 'CAR',
+  'Chicago Bears': 'CHI',
+  'Cincinnati Bengals': 'CIN',
+  'Cleveland Browns': 'CLE',
+  'Dallas Cowboys': 'DAL',
+  'Denver Broncos': 'DEN',
+  'Detroit Lions': 'DET',
+  'Green Bay Packers': 'GB',
+  'Houston Texans': 'HOU',
+  'Indianapolis Colts': 'IND',
+  'Jacksonville Jaguars': 'JAX',
+  'Kansas City Chiefs': 'KC',
+  'Las Vegas Raiders': 'LV',
+  'Los Angeles Chargers': 'LAC',
+  'Los Angeles Rams': 'LA',
+  'Miami Dolphins': 'MIA',
+  'Minnesota Vikings': 'MIN',
+  'New England Patriots': 'NE',
+  'New Orleans Saints': 'NO',
+  'New York Giants': 'NYG',
+  'New York Jets': 'NYJ',
+  'Philadelphia Eagles': 'PHI',
+  'Pittsburgh Steelers': 'PIT',
+  'San Francisco 49ers': 'SF',
+  'Seattle Seahawks': 'SEA',
+  'Tampa Bay Buccaneers': 'TB',
+  'Tennessee Titans': 'TEN',
+  'Washington Commanders': 'WAS',
+}
+
 // NFL Teams (includes historical names for older data)
 const NFL_TEAMS = [
   '',
-  'Arizona Cardinals', 'Atlanta Falcons', 'Baltimore Colts', 'Baltimore Ravens',
+  'Arizona Cardinals', 'Atlanta Falcons', 'Baltimore Ravens',
   'Buffalo Bills', 'Carolina Panthers', 'Chicago Bears', 'Cincinnati Bengals',
   'Cleveland Browns', 'Dallas Cowboys', 'Denver Broncos', 'Detroit Lions',
-  'Green Bay Packers', 'Houston Oilers', 'Houston Texans', 'Indianapolis Colts',
-  'Jacksonville Jaguars', 'Kansas City Chiefs', 'Los Angeles Chargers',
-  'Los Angeles Raiders', 'Los Angeles Rams', 'Miami Dolphins', 'Minnesota Vikings',
+  'Green Bay Packers', 'Houston Texans', 'Indianapolis Colts',
+  'Jacksonville Jaguars', 'Kansas City Chiefs', 'Las Vegas Raiders', 'Los Angeles Chargers',
+  'Los Angeles Rams', 'Miami Dolphins', 'Minnesota Vikings',
   'New England Patriots', 'New Orleans Saints', 'New York Giants', 'New York Jets',
-  'Oakland Raiders', 'Philadelphia Eagles', 'Phoenix Cardinals', 'Pittsburgh Steelers',
-  'San Diego Chargers', 'San Francisco 49ers', 'Seattle Seahawks', 'St. Louis Cardinals',
-  'St. Louis Rams', 'Tampa Bay Buccaneers', 'Tennessee Oilers', 'Tennessee Titans',
-  'Washington Redskins',
+  'Philadelphia Eagles', 'Pittsburgh Steelers',
+  'San Francisco 49ers', 'Seattle Seahawks',
+  'Tampa Bay Buccaneers', 'Tennessee Titans',
+  'Washington Commanders',
 ]
 
 // Filter presets
@@ -109,7 +143,7 @@ const DEFAULT_FILTERS = {
   win_pct_max: 100,
   // Season range
   season_start: 2000,
-  season_end: 2017,
+  season_end: 2023,
 }
 
 function StrategyForm({ onSubmit, loading }) {
@@ -155,75 +189,52 @@ function StrategyForm({ onSubmit, loading }) {
 
   return (
     <form onSubmit={handleSubmit} style={styles.form}>
-      <h2>Build Your Strategy</h2>
+      {/* 3-Column Grid Layout */}
+      <div style={styles.gridContainer}>
 
-      {/* Quick Presets */}
-      <div style={styles.presets}>
-        <span style={styles.presetsLabel}>Quick Presets:</span>
-        <div style={styles.presetButtons}>
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.name}
-              type="button"
-              onClick={() => applyPreset(preset)}
-              style={styles.presetButton}
-            >
-              {preset.name}
-            </button>
-          ))}
-          <button type="button" onClick={resetFilters} style={styles.resetButton}>
-            Reset All
-          </button>
-        </div>
-      </div>
-
-      {/* Core Settings */}
-      <div style={styles.coreSettings}>
-        <div style={styles.field}>
-          <label>Strategy Name</label>
-          <input
-            type="text"
-            value={filters.name}
-            onChange={(e) => updateFilter('name', e.target.value)}
-            placeholder="e.g., Home Underdogs ATS"
-            style={styles.input}
-          />
-        </div>
-
-        <div style={styles.row}>
-          <div style={styles.field}>
-            <label>Market</label>
+        {/* LEFT COLUMN: Core Settings */}
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Core Settings</div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Name</label>
+            <input
+              type="text"
+              value={filters.name}
+              onChange={(e) => updateFilter('name', e.target.value)}
+              placeholder="Strategy name..."
+              style={styles.inlineInput}
+            />
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Market</label>
             <select
               value={filters.market}
               onChange={(e) => updateFilter('market', e.target.value)}
-              style={styles.select}
+              style={styles.inlineSelect}
             >
               <option value="spread">Spread (ATS)</option>
               <option value="total">Totals (O/U)</option>
               <option value="moneyline">Moneyline</option>
             </select>
           </div>
-          <div style={styles.field}>
-            <label>Bet Side</label>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Bet Side</label>
             <select
               value={filters.bet_side}
               onChange={(e) => updateFilter('bet_side', e.target.value)}
-              style={styles.select}
+              style={styles.inlineSelect}
             >
               {getBetSideOptions().map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
-        </div>
-
-        <div style={styles.row}>
-          <div style={styles.field}>
-            <label>Team</label>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Team</label>
             <select
               value={filters.team}
               onChange={(e) => updateFilter('team', e.target.value)}
-              style={styles.select}
+              style={styles.inlineSelect}
             >
               {NFL_TEAMS.map((team) => (
                 <option key={team || 'any'} value={team}>
@@ -232,12 +243,12 @@ function StrategyForm({ onSubmit, loading }) {
               ))}
             </select>
           </div>
-          <div style={styles.field}>
-            <label>Opponent</label>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Opponent</label>
             <select
               value={filters.opponent}
               onChange={(e) => updateFilter('opponent', e.target.value)}
-              style={styles.select}
+              style={styles.inlineSelect}
             >
               {NFL_TEAMS.map((team) => (
                 <option key={team || 'any-opp'} value={team}>
@@ -246,185 +257,347 @@ function StrategyForm({ onSubmit, loading }) {
               ))}
             </select>
           </div>
-        </div>
-      </div>
-
-      {/* Advanced Filters */}
-      <div style={styles.advancedFilters}>
-        <h3 style={styles.sectionTitle}>Advanced Filters</h3>
-
-        {/* Line Filters */}
-        <FilterSection title="Line Filters" defaultOpen={false}>
-          {filters.market !== 'total' && (
-            <RangeSlider
-              label="Spread Range"
-              min={-14}
-              max={14}
-              step={0.5}
-              value={[filters.spread_min, filters.spread_max]}
-              onChange={([min, max]) => {
-                updateFilter('spread_min', min)
-                updateFilter('spread_max', max)
-              }}
-              formatValue={(v) => (v > 0 ? `+${v}` : v)}
-            />
-          )}
-          <RangeSlider
-            label="Total Range"
-            min={30}
-            max={65}
-            step={0.5}
-            value={[filters.total_min, filters.total_max]}
-            onChange={([min, max]) => {
-              updateFilter('total_min', min)
-              updateFilter('total_max', max)
-            }}
-          />
-        </FilterSection>
-
-        {/* Weather Filters */}
-        <FilterSection title="Weather" defaultOpen={false}>
-          <RangeSlider
-            label="Temperature"
-            min={0}
-            max={100}
-            step={5}
-            value={[filters.temp_min, filters.temp_max]}
-            onChange={([min, max]) => {
-              updateFilter('temp_min', min)
-              updateFilter('temp_max', max)
-            }}
-            formatValue={(v) => `${v}°F`}
-          />
-          <RangeSlider
-            label="Wind Speed"
-            min={0}
-            max={40}
-            step={5}
-            value={[filters.wind_min, filters.wind_max]}
-            onChange={([min, max]) => {
-              updateFilter('wind_min', min)
-              updateFilter('wind_max', max)
-            }}
-            formatValue={(v) => `${v} mph`}
-          />
-        </FilterSection>
-
-        {/* Game Situation */}
-        <FilterSection title="Game Situation" defaultOpen={false}>
-          <div style={styles.checkboxGroup}>
-            <label style={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={filters.home_only}
-                onChange={(e) => {
-                  updateFilter('home_only', e.target.checked)
-                  if (e.target.checked) updateFilter('away_only', false)
-                }}
-              />
-              Home games only
-            </label>
-            <label style={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={filters.away_only}
-                onChange={(e) => {
-                  updateFilter('away_only', e.target.checked)
-                  if (e.target.checked) updateFilter('home_only', false)
-                }}
-              />
-              Away games only
-            </label>
-            <label style={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={filters.playoffs_only}
-                onChange={(e) => {
-                  updateFilter('playoffs_only', e.target.checked)
-                  if (e.target.checked) updateFilter('regular_only', false)
-                }}
-              />
-              Playoffs only
-            </label>
-            <label style={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={filters.regular_only}
-                onChange={(e) => {
-                  updateFilter('regular_only', e.target.checked)
-                  if (e.target.checked) updateFilter('playoffs_only', false)
-                }}
-              />
-              Regular season only
-            </label>
-          </div>
-          <RangeSlider
-            label="Week Range"
-            min={1}
-            max={22}
-            step={1}
-            value={[filters.week_min, filters.week_max]}
-            onChange={([min, max]) => {
-              updateFilter('week_min', min)
-              updateFilter('week_max', max)
-            }}
-            formatValue={(v) => v <= 17 ? `Week ${v}` : 'Playoffs'}
-          />
-        </FilterSection>
-
-        {/* Team Performance */}
-        <FilterSection title="Team Performance" defaultOpen={false}>
-          <RangeSlider
-            label="Team Win % (Season)"
-            min={0}
-            max={100}
-            step={5}
-            value={[filters.win_pct_min, filters.win_pct_max]}
-            onChange={([min, max]) => {
-              updateFilter('win_pct_min', min)
-              updateFilter('win_pct_max', max)
-            }}
-            formatValue={(v) => `${v}%`}
-          />
-        </FilterSection>
-
-        {/* Season Range */}
-        <FilterSection title="Season Range" defaultOpen={true}>
-          <div style={styles.row}>
-            <div style={styles.field}>
-              <label>Start Season</label>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Seasons</label>
+            <div style={styles.miniRangeRow}>
               <input
                 type="number"
                 value={filters.season_start}
                 onChange={(e) => updateFilter('season_start', parseInt(e.target.value))}
-                min={1967}
-                max={2017}
-                style={styles.input}
+                min={1999}
+                max={2023}
+                style={styles.miniInput}
               />
-            </div>
-            <div style={styles.field}>
-              <label>End Season</label>
+              <span style={styles.miniSeparator}>-</span>
               <input
                 type="number"
                 value={filters.season_end}
                 onChange={(e) => updateFilter('season_end', parseInt(e.target.value))}
-                min={1967}
-                max={2017}
-                style={styles.input}
+                min={1999}
+                max={2023}
+                style={styles.miniInput}
               />
             </div>
           </div>
-        </FilterSection>
-      </div>
+        </div>
 
-      <button type="submit" disabled={loading} style={styles.button}>
-        {loading ? 'Running Backtest...' : 'Test Strategy'}
-      </button>
+        {/* MIDDLE COLUMN: Filters */}
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Filters</div>
+          {filters.market !== 'total' && (
+            <div style={styles.inlineField}>
+              <label style={styles.inlineLabel}>Spread</label>
+              <div style={styles.miniRangeRow}>
+                <input type="number" value={filters.spread_min} onChange={(e) => updateFilter('spread_min', parseFloat(e.target.value))} step={0.5} style={styles.miniInput} />
+                <span style={styles.miniSeparator}>to</span>
+                <input type="number" value={filters.spread_max} onChange={(e) => updateFilter('spread_max', parseFloat(e.target.value))} step={0.5} style={styles.miniInput} />
+              </div>
+            </div>
+          )}
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Total</label>
+            <div style={styles.miniRangeRow}>
+              <input type="number" value={filters.total_min} onChange={(e) => updateFilter('total_min', parseFloat(e.target.value))} step={0.5} style={styles.miniInput} />
+              <span style={styles.miniSeparator}>to</span>
+              <input type="number" value={filters.total_max} onChange={(e) => updateFilter('total_max', parseFloat(e.target.value))} step={0.5} style={styles.miniInput} />
+            </div>
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Weeks</label>
+            <div style={styles.miniRangeRow}>
+              <input type="number" value={filters.week_min} onChange={(e) => updateFilter('week_min', parseInt(e.target.value))} min={1} max={22} style={styles.miniInput} />
+              <span style={styles.miniSeparator}>to</span>
+              <input type="number" value={filters.week_max} onChange={(e) => updateFilter('week_max', parseInt(e.target.value))} min={1} max={22} style={styles.miniInput} />
+            </div>
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Win %</label>
+            <div style={styles.miniRangeRow}>
+              <input type="number" value={filters.win_pct_min} onChange={(e) => updateFilter('win_pct_min', parseFloat(e.target.value))} step={5} style={styles.miniInput} />
+              <span style={styles.miniSeparator}>to</span>
+              <input type="number" value={filters.win_pct_max} onChange={(e) => updateFilter('win_pct_max', parseFloat(e.target.value))} step={5} style={styles.miniInput} />
+            </div>
+          </div>
+          <div style={styles.checkboxGrid}>
+            <label style={styles.miniCheckbox}>
+              <input type="checkbox" checked={filters.home_only} onChange={(e) => { updateFilter('home_only', e.target.checked); if (e.target.checked) updateFilter('away_only', false) }} />
+              Home
+            </label>
+            <label style={styles.miniCheckbox}>
+              <input type="checkbox" checked={filters.away_only} onChange={(e) => { updateFilter('away_only', e.target.checked); if (e.target.checked) updateFilter('home_only', false) }} />
+              Away
+            </label>
+            <label style={styles.miniCheckbox}>
+              <input type="checkbox" checked={filters.playoffs_only} onChange={(e) => { updateFilter('playoffs_only', e.target.checked); if (e.target.checked) updateFilter('regular_only', false) }} />
+              Playoffs
+            </label>
+            <label style={styles.miniCheckbox}>
+              <input type="checkbox" checked={filters.regular_only} onChange={(e) => { updateFilter('regular_only', e.target.checked); if (e.target.checked) updateFilter('playoffs_only', false) }} />
+              Regular
+            </label>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Weather + Action */}
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Weather (Optional)</div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Temp °F</label>
+            <div style={styles.miniRangeRow}>
+              <input type="number" value={filters.temp_min} onChange={(e) => updateFilter('temp_min', parseFloat(e.target.value))} step={5} style={styles.miniInput} />
+              <span style={styles.miniSeparator}>to</span>
+              <input type="number" value={filters.temp_max} onChange={(e) => updateFilter('temp_max', parseFloat(e.target.value))} step={5} style={styles.miniInput} />
+            </div>
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Wind mph</label>
+            <div style={styles.miniRangeRow}>
+              <input type="number" value={filters.wind_min} onChange={(e) => updateFilter('wind_min', parseFloat(e.target.value))} step={5} style={styles.miniInput} />
+              <span style={styles.miniSeparator}>to</span>
+              <input type="number" value={filters.wind_max} onChange={(e) => updateFilter('wind_max', parseFloat(e.target.value))} step={5} style={styles.miniInput} />
+            </div>
+          </div>
+
+          <div style={styles.presetsCompact}>
+            <div style={styles.presetButtonsCompact}>
+              {PRESETS.map((preset) => (
+                <button key={preset.name} type="button" onClick={() => applyPreset(preset)} style={styles.presetButtonSmall}>
+                  {preset.name}
+                </button>
+              ))}
+              <button type="button" onClick={resetFilters} style={styles.resetButtonSmall}>
+                Reset
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" disabled={loading} style={styles.submitButton}>
+            {loading ? 'Testing...' : '▶ Test Strategy'}
+          </button>
+        </div>
+      </div>
     </form>
   )
 }
 
-// Results display
+// Compact Results Display (inline on main page)
+function CompactResults({ data }) {
+  if (!data) return null
+  const { results, summary } = data
+  const isProfit = results.roi_pct > 0
+
+  return (
+    <div style={styles.compactResultsContainer}>
+      <div style={styles.compactResultsGrid}>
+        <div style={{
+          ...styles.compactVerdict,
+          backgroundColor: isProfit ? '#e6ffe6' : '#ffe6e6',
+          borderColor: isProfit ? '#00aa00' : '#aa0000',
+        }}>
+          <div style={styles.verdictText}>{isProfit ? '✓ PROFITABLE' : '✗ UNPROFITABLE'}</div>
+          <div style={styles.roiHero}>
+            <span style={{ color: isProfit ? '#00aa00' : '#aa0000' }}>
+              {results.roi_pct > 0 ? '+' : ''}{results.roi_pct}%
+            </span>
+            <span style={styles.roiLabel}>ROI</span>
+          </div>
+        </div>
+        <div style={styles.compactMetricsRow}>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{results.total_bets}</span>
+            <span style={styles.compactMetricLabel}>Bets</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{results.wins}-{results.losses}-{results.pushes}</span>
+            <span style={styles.compactMetricLabel}>W-L-P</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{results.win_rate_pct}%</span>
+            <span style={styles.compactMetricLabel}>Win Rate</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{results.total_profit_units > 0 ? '+' : ''}{results.total_profit_units}u</span>
+            <span style={styles.compactMetricLabel}>Profit</span>
+          </div>
+          <div style={styles.compactMetric}>
+            <span style={styles.compactMetricValue}>{results.max_drawdown_units}u</span>
+            <span style={styles.compactMetricLabel}>Max DD</span>
+          </div>
+        </div>
+      </div>
+      {results.warnings && results.warnings.length > 0 && (
+        <div style={styles.compactWarnings}>
+          {results.warnings.map((w, i) => <div key={i}>⚠️ {w}</div>)}
+        </div>
+      )}
+      {summary && <div style={styles.compactSummary}>{summary}</div>}
+    </div>
+  )
+}
+
+// Compact Optimizer Form
+function OptimizerForm({ onSubmit, loading }) {
+  const [market, setMarket] = useState('spread')
+  const [seasonStart, setSeasonStart] = useState(2000)
+  const [seasonEnd, setSeasonEnd] = useState(2023)
+  const [minBets, setMinBets] = useState(50)
+  const [monteCarloBets, setMonteCarloBets] = useState(100)
+  const [includeSpread, setIncludeSpread] = useState(true)
+  const [includeTemp, setIncludeTemp] = useState(false)
+  const [includeWind, setIncludeWind] = useState(false)
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onSubmit({ market, seasonStart, seasonEnd, minBets, monteCarloBets, includeSpread, includeTemp, includeWind })
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={styles.form}>
+      <div style={styles.gridContainer}>
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Settings</div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Market</label>
+            <select value={market} onChange={(e) => setMarket(e.target.value)} style={styles.inlineSelect} disabled={loading}>
+              <option value="spread">Spread (ATS)</option>
+              <option value="total">Totals (O/U)</option>
+              <option value="moneyline">Moneyline</option>
+            </select>
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Min Bets</label>
+            <input type="number" value={minBets} onChange={(e) => setMinBets(parseInt(e.target.value))} min={20} max={200} style={styles.inlineInput} disabled={loading} />
+          </div>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>Seasons</label>
+            <div style={styles.miniRangeRow}>
+              <input type="number" value={seasonStart} onChange={(e) => setSeasonStart(parseInt(e.target.value))} min={1999} max={2023} style={styles.miniInput} disabled={loading} />
+              <span style={styles.miniSeparator}>-</span>
+              <input type="number" value={seasonEnd} onChange={(e) => setSeasonEnd(parseInt(e.target.value))} min={1999} max={2023} style={styles.miniInput} disabled={loading} />
+            </div>
+          </div>
+        </div>
+
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Search Space</div>
+          <label style={styles.miniCheckbox}>
+            <input type="checkbox" checked={includeSpread} onChange={(e) => setIncludeSpread(e.target.checked)} disabled={loading} />
+            Line ranges (spread/total)
+          </label>
+          <label style={styles.miniCheckbox}>
+            <input type="checkbox" checked={includeTemp} onChange={(e) => setIncludeTemp(e.target.checked)} disabled={loading} />
+            Temperature ranges
+          </label>
+          <label style={styles.miniCheckbox}>
+            <input type="checkbox" checked={includeWind} onChange={(e) => setIncludeWind(e.target.checked)} disabled={loading} />
+            Wind conditions
+          </label>
+          <div style={styles.inlineField}>
+            <label style={styles.inlineLabel}>MC Bets</label>
+            <input type="number" value={monteCarloBets} onChange={(e) => setMonteCarloBets(parseInt(e.target.value))} min={50} max={500} step={50} style={styles.inlineInput} disabled={loading} />
+          </div>
+        </div>
+
+        <div style={styles.gridColumn}>
+          <div style={styles.columnHeader}>Action</div>
+          <div style={styles.optInfoBox}>
+            Uses 5-fold cross-validation + Monte Carlo simulation to find statistically robust strategies.
+          </div>
+          <button type="submit" disabled={loading} style={styles.submitButton}>
+            {loading ? 'Optimizing...' : '▶ Find Best Strategies'}
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
+// Compact Optimizer Results
+function CompactOptimizerResults({ results, selectedStrategies, onToggleSelect }) {
+  if (!results || !results.strategies) return null
+
+  return (
+    <div style={styles.optResultsContainer}>
+      <div style={styles.optResultsMeta}>{results.message}</div>
+      {results.strategies.length === 0 ? (
+        <div style={styles.noResults}>No strategies found. Try lowering minimum bets.</div>
+      ) : (
+        <div style={styles.optStrategiesList}>
+          {results.strategies.slice(0, 5).map((strategy, index) => (
+            <CompactStrategyCard
+              key={index}
+              strategy={strategy}
+              rank={index + 1}
+              selected={selectedStrategies.has(index)}
+              onToggleSelect={() => onToggleSelect(index)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Compact Strategy Card
+function CompactStrategyCard({ strategy, rank, selected, onToggleSelect }) {
+  const projection = strategy.projection
+  const isProfit = strategy.validation_roi_pct > 0
+
+  return (
+    <div style={{
+      ...styles.optCard,
+      borderColor: selected ? '#0070f3' : '#e0e0e0',
+      borderWidth: selected ? '2px' : '1px',
+    }}>
+      <div style={styles.optCardHeader}>
+        <input type="checkbox" checked={selected} onChange={onToggleSelect} style={styles.optCheckbox} />
+        <span style={styles.optRank}>#{rank}</span>
+        <span style={styles.optCardTitle}>{strategy.filters_description}</span>
+      </div>
+      <div style={styles.optCardMetrics}>
+        <div style={styles.optMetric}>
+          <span style={styles.optMetricLabel}>Sharpe</span>
+          <span style={{
+            ...styles.optMetricValue,
+            color: strategy.validation_sharpe > 1 ? '#00aa00' : strategy.validation_sharpe > 0 ? '#666' : '#aa0000'
+          }}>{strategy.validation_sharpe.toFixed(2)}</span>
+        </div>
+        <div style={styles.optMetric}>
+          <span style={styles.optMetricLabel}>Val ROI</span>
+          <span style={{
+            ...styles.optMetricValue,
+            color: isProfit ? '#00aa00' : '#aa0000'
+          }}>{strategy.validation_roi_pct > 0 ? '+' : ''}{strategy.validation_roi_pct}%</span>
+        </div>
+        <div style={styles.optMetric}>
+          <span style={styles.optMetricLabel}>Bets</span>
+          <span style={styles.optMetricValue}>{strategy.total_bets}</span>
+        </div>
+        <div style={styles.optMetric}>
+          <span style={styles.optMetricLabel}>Win%</span>
+          <span style={styles.optMetricValue}>{strategy.win_rate_pct}%</span>
+        </div>
+        {projection && (
+          <>
+            <div style={styles.optMetric}>
+              <span style={styles.optMetricLabel}>Prob Profit</span>
+              <span style={{
+                ...styles.optMetricValue,
+                color: projection.probability_of_profit >= 60 ? '#00cc00' : projection.probability_of_profit >= 50 ? '#666' : '#cc0000'
+              }}>{projection.probability_of_profit}%</span>
+            </div>
+            <div style={styles.optMetric}>
+              <span style={styles.optMetricLabel}>½ Kelly</span>
+              <span style={styles.optMetricValue}>{(projection.kelly_half * 100).toFixed(1)}%</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Results display (legacy - kept for CinematicResults)
 function Results({ data }) {
   if (!data) return null
 
@@ -754,7 +927,12 @@ export default function Home() {
   const [results, setResults] = useState(null)
   const [error, setError] = useState(null)
   const [favoriteTeam, setFavoriteTeam] = useState('')
-  const [showResults, setShowResults] = useState(false)
+
+  // Optimizer state
+  const [optLoading, setOptLoading] = useState(false)
+  const [optResults, setOptResults] = useState(null)
+  const [optError, setOptError] = useState(null)
+  const [selectedStrategies, setSelectedStrategies] = useState(new Set())
 
   // Get gradient colors based on favorite team
   const teamColors = TEAM_COLORS[favoriteTeam] || TEAM_COLORS['']
@@ -767,7 +945,6 @@ export default function Home() {
   const runBacktest = async (filters) => {
     setLoading(true)
     setError(null)
-    setShowResults(false)
 
     try {
       // Build filters array for backend
@@ -846,6 +1023,10 @@ export default function Home() {
         if (filters.opponent) strategyName += ` vs ${filters.opponent}`
       }
 
+      // Convert team names to abbreviations
+      const teamAbbrev = filters.team ? (TEAM_ABBREV_MAP[filters.team] || filters.team) : null
+      const opponentAbbrev = filters.opponent ? (TEAM_ABBREV_MAP[filters.opponent] || filters.opponent) : null
+
       const strategyInput = {
         name: strategyName,
         description: `Betting ${filters.bet_side} on ${filters.market}`,
@@ -853,8 +1034,8 @@ export default function Home() {
         market: filters.market,
         bet_side: filters.bet_side,
         filters: backendFilters,
-        team: filters.team || null,
-        opponent: filters.opponent || null,
+        team: teamAbbrev,
+        opponent: opponentAbbrev,
         season_start: filters.season_start,
         season_end: filters.season_end,
         stake_unit: 1.0,
@@ -873,7 +1054,6 @@ export default function Home() {
 
       const data = await response.json()
       setResults(data)
-      setShowResults(true)
     } catch (err) {
       setError(`Failed to run backtest: ${err.message}. Make sure the backend is running.`)
     } finally {
@@ -881,67 +1061,296 @@ export default function Home() {
     }
   }
 
-  const backToBuilder = () => {
-    setShowResults(false)
-    setResults(null)
-    setError(null)
+  // Optimizer function
+  const runOptimizer = async (config) => {
+    setOptLoading(true)
+    setOptError(null)
+    setOptResults(null)
+
+    try {
+      const response = await fetch(`${API_URL}/optimize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          market: config.market,
+          season_start: config.seasonStart,
+          season_end: config.seasonEnd,
+          n_folds: 5,
+          min_bets: config.minBets,
+          max_combinations: 5000,
+          top_n: 10,
+          filter_config: {
+            include_spread: config.includeSpread,
+            include_temperature: config.includeTemp,
+            include_wind: config.includeWind,
+          },
+          run_monte_carlo: true,
+          monte_carlo_simulations: 10000,
+          monte_carlo_bets: config.monteCarloBets,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      setOptResults(data)
+    } catch (err) {
+      setOptError(`Optimizer failed: ${err.message}`)
+    } finally {
+      setOptLoading(false)
+    }
+  }
+
+  const toggleStrategySelection = (index) => {
+    const newSelected = new Set(selectedStrategies)
+    if (newSelected.has(index)) {
+      newSelected.delete(index)
+    } else {
+      newSelected.add(index)
+    }
+    setSelectedStrategies(newSelected)
   }
 
   return (
     <div style={gradientStyle}>
-      {/* Show results screen or builder */}
-      {showResults && results ? (
-        <CinematicResults data={results} onBack={backToBuilder} />
-      ) : (
-        <>
-          {/* Navigation and Team Selector */}
-          <div style={styles.topBar}>
-            <Link href="/optimizer" style={styles.optimizerLink}>
-              Strategy Optimizer →
-            </Link>
-            <div style={styles.teamSelector}>
-              <label style={styles.teamSelectorLabel}>Pick Your Team:</label>
-              <select
-                value={favoriteTeam}
-                onChange={(e) => setFavoriteTeam(e.target.value)}
-                style={styles.teamSelectorDropdown}
-              >
-                <option value="">Default Theme</option>
-                {NFL_TEAMS.filter(t => t).map((team) => (
-                  <option key={team} value={team}>{team}</option>
-                ))}
-              </select>
+      {/* Team Selector */}
+      <div style={styles.topBar}>
+        <h1 style={styles.titleInline}>Do My Bets Suck?</h1>
+        <div style={styles.teamSelector}>
+          <label style={styles.teamSelectorLabel}>Theme:</label>
+          <select
+            value={favoriteTeam}
+            onChange={(e) => setFavoriteTeam(e.target.value)}
+            style={styles.teamSelectorDropdown}
+          >
+            <option value="">Default</option>
+            {NFL_TEAMS.filter(t => t).map((team) => (
+              <option key={team} value={team}>{team}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div style={styles.container}>
+        {/* Strategy Builder */}
+        <div style={styles.sectionBox}>
+          <div style={styles.sectionHeader}>Strategy Tester</div>
+          <StrategyForm onSubmit={runBacktest} loading={loading} />
+        </div>
+
+        {error && <div style={styles.error}>{error}</div>}
+
+        {/* Inline Results */}
+        {results && (
+          <div style={styles.sectionBox}>
+            <div style={styles.sectionHeader}>Backtest Results</div>
+            <CompactResults data={results} />
+          </div>
+        )}
+
+        {/* Optimizer */}
+        <div style={styles.sectionBox}>
+          <div style={styles.sectionHeader}>Strategy Optimizer</div>
+          <OptimizerForm onSubmit={runOptimizer} loading={optLoading} />
+        </div>
+
+        {optError && <div style={styles.error}>{optError}</div>}
+
+        {/* Optimizer Results */}
+        {optResults && (
+          <div style={styles.sectionBox}>
+            <div style={styles.sectionHeader}>
+              Top Strategies ({optResults.market.toUpperCase()})
             </div>
+            <CompactOptimizerResults
+              results={optResults}
+              selectedStrategies={selectedStrategies}
+              onToggleSelect={toggleStrategySelection}
+            />
           </div>
-
-          <div style={styles.container}>
-            <h1 style={styles.title}>Do My Bets Suck?</h1>
-            <p style={styles.subtitle}>
-              Test your NFL betting strategies against historical data (1967-2017)
-            </p>
-
-            <StrategyForm onSubmit={runBacktest} loading={loading} />
-
-            {error && (
-              <div style={styles.error}>{error}</div>
-            )}
-          </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   )
 }
 
 const styles = {
   container: {
-    maxWidth: '900px',
+    maxWidth: '100%',
     margin: '0 auto',
+    padding: '0 20px',
   },
   topBar: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '20px',
+    marginBottom: '10px',
+    padding: '0 20px',
+  },
+  titleInline: {
+    fontSize: '1.5rem',
+    color: 'white',
+    margin: 0,
+    textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+  },
+  sectionBox: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    marginBottom: '10px',
+    overflow: 'hidden',
+  },
+  sectionHeader: {
+    backgroundColor: '#f8f9fa',
+    padding: '8px 15px',
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#333',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    borderBottom: '2px solid #0070f3',
+  },
+  // Compact Results Styles
+  compactResultsContainer: {
+    padding: '10px 15px',
+  },
+  compactResultsGrid: {
+    display: 'flex',
+    gap: '15px',
+    alignItems: 'center',
+  },
+  compactVerdict: {
+    padding: '10px 15px',
+    borderRadius: '6px',
+    border: '2px solid',
+    textAlign: 'center',
+    minWidth: '120px',
+  },
+  verdictText: {
+    fontWeight: '700',
+    fontSize: '11px',
+    marginBottom: '4px',
+  },
+  roiHero: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: '4px',
+  },
+  roiLabel: {
+    fontSize: '11px',
+    color: '#666',
+  },
+  compactMetricsRow: {
+    display: 'flex',
+    gap: '15px',
+    flex: 1,
+  },
+  compactMetric: {
+    textAlign: 'center',
+  },
+  compactMetricValue: {
+    display: 'block',
+    fontSize: '1.1rem',
+    fontWeight: 'bold',
+  },
+  compactMetricLabel: {
+    display: 'block',
+    fontSize: '10px',
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  compactWarnings: {
+    marginTop: '8px',
+    padding: '8px',
+    backgroundColor: '#fff3cd',
+    borderRadius: '4px',
+    fontSize: '11px',
+  },
+  compactSummary: {
+    marginTop: '8px',
+    fontSize: '12px',
+    color: '#555',
+    lineHeight: '1.4',
+  },
+  // Optimizer Styles
+  optInfoBox: {
+    fontSize: '10px',
+    color: '#666',
+    padding: '8px',
+    backgroundColor: '#f0f7ff',
+    borderRadius: '4px',
+    marginBottom: '8px',
+    lineHeight: '1.4',
+  },
+  optResultsContainer: {
+    padding: '10px 15px',
+  },
+  optResultsMeta: {
+    fontSize: '11px',
+    color: '#666',
+    marginBottom: '10px',
+  },
+  optStrategiesList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  optCard: {
+    border: '1px solid #e0e0e0',
+    borderRadius: '6px',
+    padding: '10px',
+  },
+  optCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '8px',
+  },
+  optCheckbox: {
+    width: '14px',
+    height: '14px',
+  },
+  optRank: {
+    backgroundColor: '#0070f3',
+    color: 'white',
+    padding: '2px 8px',
+    borderRadius: '10px',
+    fontWeight: 'bold',
+    fontSize: '11px',
+  },
+  optCardTitle: {
+    fontWeight: '600',
+    fontSize: '12px',
+    flex: 1,
+  },
+  optCardMetrics: {
+    display: 'flex',
+    gap: '12px',
+    flexWrap: 'wrap',
+  },
+  optMetric: {
+    textAlign: 'center',
+  },
+  optMetricLabel: {
+    display: 'block',
+    fontSize: '9px',
+    color: '#888',
+    textTransform: 'uppercase',
+  },
+  optMetricValue: {
+    display: 'block',
+    fontSize: '13px',
+    fontWeight: 'bold',
+  },
+  noResults: {
+    textAlign: 'center',
+    padding: '20px',
+    color: '#666',
+    fontSize: '12px',
   },
   optimizerLink: {
     color: 'white',
@@ -987,11 +1396,133 @@ const styles = {
   },
   form: {
     backgroundColor: 'white',
-    padding: '20px',
+    padding: '15px',
     borderRadius: '8px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
     marginBottom: '20px',
   },
+  // New compact grid layout
+  gridContainer: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '15px',
+  },
+  gridColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  columnHeader: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#333',
+    borderBottom: '2px solid #0070f3',
+    paddingBottom: '4px',
+    marginBottom: '4px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  },
+  inlineField: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  inlineLabel: {
+    fontSize: '12px',
+    fontWeight: '500',
+    color: '#555',
+    minWidth: '55px',
+    flexShrink: 0,
+  },
+  inlineInput: {
+    flex: 1,
+    padding: '4px 8px',
+    fontSize: '13px',
+    border: '1px solid #ccc',
+    borderRadius: '3px',
+  },
+  inlineSelect: {
+    flex: 1,
+    padding: '4px 6px',
+    fontSize: '13px',
+    border: '1px solid #ccc',
+    borderRadius: '3px',
+  },
+  miniRangeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    flex: 1,
+  },
+  miniInput: {
+    width: '55px',
+    padding: '4px 6px',
+    fontSize: '12px',
+    border: '1px solid #ccc',
+    borderRadius: '3px',
+    textAlign: 'center',
+  },
+  miniSeparator: {
+    fontSize: '11px',
+    color: '#888',
+  },
+  checkboxGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '4px',
+    marginTop: '4px',
+    padding: '6px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '4px',
+  },
+  miniCheckbox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '11px',
+    cursor: 'pointer',
+  },
+  presetsCompact: {
+    marginTop: '8px',
+    padding: '8px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '4px',
+  },
+  presetButtonsCompact: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '4px',
+  },
+  presetButtonSmall: {
+    padding: '3px 8px',
+    fontSize: '10px',
+    backgroundColor: '#e9ecef',
+    border: '1px solid #ced4da',
+    borderRadius: '3px',
+    cursor: 'pointer',
+  },
+  resetButtonSmall: {
+    padding: '3px 8px',
+    fontSize: '10px',
+    backgroundColor: '#fff',
+    border: '1px solid #dc3545',
+    color: '#dc3545',
+    borderRadius: '3px',
+    cursor: 'pointer',
+  },
+  submitButton: {
+    width: '100%',
+    padding: '10px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    backgroundColor: '#0070f3',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    marginTop: '8px',
+  },
+  // Legacy styles (keeping for other components)
   presets: {
     marginBottom: '20px',
     padding: '15px',
@@ -1045,6 +1576,15 @@ const styles = {
   row: {
     display: 'flex',
     gap: '20px',
+  },
+  compactRow: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
+  compactField: {
+    flex: '1 1 200px',
+    minWidth: '150px',
   },
   input: {
     width: '100%',
@@ -1284,5 +1824,34 @@ const styles = {
     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
     animation: 'fadeInUp 0.6s ease-out',
     animationFillMode: 'both',
+  },
+  // Range input styles
+  rangeInputGroup: {
+    marginBottom: '15px',
+  },
+  rangeLabel: {
+    fontWeight: '500',
+    fontSize: '14px',
+    display: 'block',
+    marginBottom: '8px',
+    color: '#333',
+  },
+  rangeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  rangeInput: {
+    flex: 1,
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #ccc',
+    borderRadius: '4px',
+    boxSizing: 'border-box',
+  },
+  rangeSeparator: {
+    color: '#666',
+    fontSize: '14px',
+    fontWeight: '500',
   },
 }

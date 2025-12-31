@@ -16,6 +16,8 @@ export default function RangeSlider({
   disabled = false,
 }) {
   const [minVal, maxVal] = value
+  const [minZIndex, setMinZIndex] = useState(5)
+  const [maxZIndex, setMaxZIndex] = useState(4)
 
   const handleMinChange = (e) => {
     const newMin = Math.min(Number(e.target.value), maxVal - step)
@@ -27,12 +29,45 @@ export default function RangeSlider({
     onChange([minVal, newMax])
   }
 
+  const bringMinToFront = () => {
+    setMinZIndex(5)
+    setMaxZIndex(4)
+  }
+
+  const bringMaxToFront = () => {
+    setMinZIndex(4)
+    setMaxZIndex(5)
+  }
+
   // Calculate positions for the filled track
   const minPercent = ((minVal - min) / (max - min)) * 100
   const maxPercent = ((maxVal - min) / (max - min)) * 100
 
   return (
     <div style={styles.container}>
+      <style jsx>{`
+        input[type='range']::-webkit-slider-thumb {
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          background: #0070f3;
+          border: 2px solid white;
+          border-radius: 50%;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          pointer-events: auto;
+        }
+        input[type='range']::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          background: #0070f3;
+          border: 2px solid white;
+          border-radius: 50%;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          pointer-events: auto;
+        }
+      `}</style>
       <div style={styles.header}>
         <span style={styles.label}>{label}</span>
         <span style={styles.values}>
@@ -55,8 +90,10 @@ export default function RangeSlider({
           step={step}
           value={minVal}
           onChange={handleMinChange}
+          onMouseDown={bringMinToFront}
+          onTouchStart={bringMinToFront}
           disabled={disabled}
-          style={styles.slider}
+          style={{...styles.slider, zIndex: minZIndex}}
         />
         <input
           type="range"
@@ -65,8 +102,10 @@ export default function RangeSlider({
           step={step}
           value={maxVal}
           onChange={handleMaxChange}
+          onMouseDown={bringMaxToFront}
+          onTouchStart={bringMaxToFront}
           disabled={disabled}
-          style={styles.slider}
+          style={{...styles.slider, zIndex: maxZIndex}}
         />
       </div>
     </div>
@@ -119,8 +158,8 @@ const styles = {
     appearance: 'none',
     WebkitAppearance: 'none',
     background: 'transparent',
-    pointerEvents: 'none',
+    pointerEvents: 'auto',
     top: 0,
-    // Thumb styling via CSS
+    cursor: 'pointer',
   },
 }
